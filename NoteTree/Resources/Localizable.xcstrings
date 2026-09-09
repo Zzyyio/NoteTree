@@ -1,0 +1,324 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "command.openWorkspace" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Workspace…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开工作区…" } }
+      }
+    },
+    "detail.folder.count %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld items loaded" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已加载 %lld 个项目" } }
+      }
+    },
+    "detail.folder.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文件夹" } }
+      }
+    },
+    "detail.image.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Image" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图片" } }
+      }
+    },
+    "detail.markdown.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Markdown" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Markdown" } }
+      }
+    },
+    "detail.pdf.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "PDF" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "PDF" } }
+      }
+    },
+    "detail.readOnly.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preview and editing arrive in later roadmap phases." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "预览和编辑功能将在后续路线图阶段提供。" } }
+      }
+    },
+    "detail.unsupported.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unsupported File" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不支持的文件" } }
+      }
+    },
+    "error.workspace.fileNotFound" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The selected item is no longer available." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "所选项目已不可用。" } }
+      }
+    },
+    "error.file.invalidName" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter a valid file or folder name." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入有效的文件或文件夹名称。" } }
+      }
+    },
+    "error.file.moveFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree could not move this item." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 无法移动此项目。" } }
+      }
+    },
+    "error.file.nameConflict" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "An item with this name already exists here." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此处已有同名项目。" } }
+      }
+    },
+    "error.file.rootProtected" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The workspace folder cannot be renamed, moved, or deleted." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作区根目录不能重命名、移动或删除。" } }
+      }
+    },
+    "error.file.trashFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree could not move this item to the Trash." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 无法将此项目移到废纸篓。" } }
+      }
+    },
+    "error.file.writeFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree could not create this item." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 无法创建此项目。" } }
+      }
+    },
+    "fileAction.chooseDestination" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose Destination Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择目标文件夹" } }
+      }
+    },
+    "fileAction.chooseDestinationMessage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a folder inside this workspace." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请选择当前工作区内的文件夹。" } }
+      }
+    },
+    "fileAction.move" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Move…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移动…" } }
+      }
+    },
+    "fileAction.moveToTrash" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Move to Trash" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移到废纸篓" } }
+      }
+    },
+    "fileAction.name" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Name" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "名称" } }
+      }
+    },
+    "fileAction.new" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New Item" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新建项目" } }
+      }
+    },
+    "fileAction.newFolder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新建文件夹" } }
+      }
+    },
+    "fileAction.newMarkdown" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New Markdown Note" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新建 Markdown 笔记" } }
+      }
+    },
+    "fileAction.rename" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Rename" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重命名" } }
+      }
+    },
+    "fileAction.revealInFinder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show in Finder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在 Finder 中显示" } }
+      }
+    },
+    "error.workspace.invalid" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This folder cannot be used as a workspace." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此文件夹不能作为工作区使用。" } }
+      }
+    },
+    "error.workspace.notDirectory" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Please choose a folder." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请选择文件夹。" } }
+      }
+    },
+    "error.workspace.outOfBounds" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The requested item is outside this workspace." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请求的项目位于工作区之外。" } }
+      }
+    },
+    "error.workspace.permissionDenied" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree does not have permission to read this workspace." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 没有读取此工作区的权限。" } }
+      }
+    },
+    "error.workspace.readFailed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree could not read this workspace." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 无法读取此工作区。" } }
+      }
+    },
+    "error.workspace.reauthorize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Please select this workspace again to restore access." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请重新选择此工作区以恢复访问权限。" } }
+      }
+    },
+    "settings.application" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Application" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "应用" } }
+      }
+    },
+    "settings.minimumSystem" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minimum system" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最低系统" } }
+      }
+    },
+    "settings.phaseZero.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Editor, PDF, and file preferences arrive in later roadmap phases." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "编辑器、PDF 与文件偏好设置将在后续路线图阶段提供。" } }
+      }
+    },
+    "settings.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } }
+      }
+    },
+    "sidebar.noWorkspace" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No Workspace" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未打开工作区" } }
+      }
+    },
+    "sidebar.files" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Files" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文件" } }
+      }
+    },
+    "sidebar.filter" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Filter files" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "筛选文件" } }
+      }
+    },
+    "sidebar.noMatches" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No matching files" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有匹配的文件" } }
+      }
+    },
+    "sidebar.recents" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent Workspaces" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近的工作区" } }
+      }
+    },
+    "welcome.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your notes, PDFs, and images remain ordinary files in a folder you choose." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "笔记、PDF 和图片始终保留为你所选文件夹中的普通文件。" } }
+      }
+    },
+    "welcome.openWorkspace" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开文件夹" } }
+      }
+    },
+    "welcome.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Welcome to NoteTree" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "欢迎使用 NoteTree" } }
+      }
+    },
+    "workspace.error.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Workspace Unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作区不可用" } }
+      }
+    },
+    "workspace.loading" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading workspace…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在载入工作区…" } }
+      }
+    },
+    "workspace.reauthorize.action" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose Folder Again" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新选择文件夹" } }
+      }
+    },
+    "workspace.reauthorize.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The previous permission is no longer valid." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "之前的访问权限已失效。" } }
+      }
+    },
+    "workspace.reauthorize.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Access Needs Renewal" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要恢复访问权限" } }
+      }
+    },
+    "workspace.selectFile.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select a file or folder in the sidebar." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请在侧边栏中选择文件或文件夹。" } }
+      }
+    },
+    "workspace.selectFile.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select an Item" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择项目" } }
+      }
+    },
+    "workspacePicker.message" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree only reads files in the folder you choose." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 只会读取你所选文件夹中的文件。" } }
+      }
+    },
+    "workspacePicker.open" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开" } }
+      }
+    },
+    "workspacePicker.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a NoteTree Workspace" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择 NoteTree 工作区" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}
