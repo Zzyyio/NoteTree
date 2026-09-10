@@ -34,12 +34,18 @@ struct WorkspaceSidebar: View {
                             InlineCreationRow(kind: creationKind, fileTree: fileTree)
                         }
                         FileTreeNodeList(nodes: fileTree.rootChildren, fileTree: fileTree)
+                        WorkspaceRootDropTarget(fileTree: fileTree)
                     } else if fileTree.matchingNodes.isEmpty {
                         Text("sidebar.noMatches")
                             .foregroundStyle(.secondary)
                     } else {
                         FileTreeNodeList(nodes: fileTree.matchingNodes, fileTree: fileTree)
                     }
+                }
+                .transaction { transaction in
+                    // File mutations replace a fully rebuilt snapshot; List must not animate
+                    // that replacement as a collapse followed by an insertion.
+                    transaction.animation = nil
                 }
 
                 if let error = fileTree.lastError {
@@ -68,6 +74,11 @@ struct WorkspaceSidebar: View {
             }
         }
         .navigationTitle(workspaceStore.currentWorkspace?.displayName ?? "sidebar.noWorkspace")
+        .sheet(isPresented: inspectionBinding) {
+            if let fileTree = workspaceStore.fileTree {
+                FileInfoSheet(fileTree: fileTree)
+            }
+        }
         .toolbar {
             if let fileTree = workspaceStore.fileTree {
                 ToolbarItem {
@@ -79,6 +90,11 @@ struct WorkspaceSidebar: View {
                             fileTree.beginCreation(.folder, in: selectedFolder(in: fileTree))
                         }
                         Divider()
+                        Button("fileAction.showInfo") {
+                            Task {
+                                await fileTree.inspect()
+                            }
+                        }
                         Button("fileAction.revealInFinder") {
                             NSWorkspace.shared.activateFileViewerSelecting([fileTree.workspace.rootURL])
                         }
@@ -114,6 +130,17 @@ struct WorkspaceSidebar: View {
             return nil
         }
         return selectedNode
+    }
+
+    private var inspectionBinding: Binding<Bool> {
+        Binding(
+            get: { workspaceStore.fileTree?.isShowingInspection == true },
+            set: { isPresented in
+                if !isPresented {
+                    workspaceStore.fileTree?.dismissInspection()
+                }
+            }
+        )
     }
 }
 
@@ -159,9 +186,36 @@ private struct FileTreeNodeList: View {
 }
 
 @MainActor
+private struct WorkspaceRootDropTarget: View {
+    let fileTree: FileTreeStore
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "folder")
+            Text("sidebar.workspaceRoot")
+        }
+        .font(.caption)
+        .foregroundStyle(fileTree.isRootDropTarget ? .white : .secondary)
+        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(fileTree.isRootDropTarget ? Color.black.opacity(0.82) : .clear)
+        )
+        .contentShape(Rectangle())
+        .onDrop(
+            of: [FileTreeDragDrop.contentType],
+            delegate: FileTreeDropDelegate(fileTree: fileTree, destination: nil)
+        )
+        .accessibilityIdentifier("workspace.rootDropTarget")
+    }
+}
+
+@MainActor
 private struct FileTreeNodeRow: View {
     let node: FileNode
     let fileTree: FileTreeStore
+    @FocusState private var isRenameFocused: Bool
 
     var body: some View {
         if node.isFolder {
@@ -174,6 +228,10 @@ private struct FileTreeNodeRow: View {
             } label: {
                 nodeLabel
             }
+            .onDrop(
+                of: [FileTreeDragDrop.contentType],
+                delegate: FileTreeDropDelegate(fileTree: fileTree, destination: node)
+            )
         } else {
             nodeLabel
         }
@@ -194,15 +252,29 @@ private struct FileTreeNodeRow: View {
         Group {
             if fileTree.renameNodeID == node.id {
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("fileAction.name", text: Bindable(fileTree).renameName)
-                        .onSubmit {
-                            Task {
-                                await fileTree.commitRename(for: node)
+                    HStack(spacing: 6) {
+                        Image(systemName: node.kind.systemImage)
+                            .foregroundStyle(.white)
+                        TextField("fileAction.name", text: Bindable(fileTree).renameName)
+                            .textFieldStyle(.plain)
+                            .focused($isRenameFocused)
+                            .tint(.white)
+                            .foregroundStyle(.white)
+                            .onSubmit {
+                                Task {
+                                    await fileTree.commitRename(for: node)
+                                }
                             }
-                        }
-                        .onExitCommand {
-                            fileTree.cancelRename()
-                        }
+                            .onExitCommand {
+                                fileTree.cancelRename()
+                            }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(.black.opacity(0.86)))
+                    .onAppear {
+                        isRenameFocused = true
+                    }
 
                     if let error = fileTree.inlineOperationError {
                         Text(error.localizedDescription)
@@ -216,8 +288,19 @@ private struct FileTreeNodeRow: View {
                 } label: {
                     Label(node.displayName, systemImage: node.kind.systemImage)
                         .lineLimit(1)
+                        .foregroundStyle(labelForegroundStyle)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(labelBackgroundColor))
                 }
+                .contentShape(Rectangle())
                 .buttonStyle(.plain)
+                .onHover { isHovering in
+                    fileTree.setHovered(node, isHovering: isHovering)
+                }
+                .onDrag {
+                    FileTreeDragDrop.provider(for: node, fileTree: fileTree)
+                }
                 .contextMenu {
                     if node.isFolder {
                         Button("fileAction.newMarkdown") {
@@ -232,8 +315,15 @@ private struct FileTreeNodeRow: View {
                     Button("fileAction.rename") {
                         fileTree.beginRename(node)
                     }
-                    Button("fileAction.move") {
-                        chooseMoveDestination()
+                    Button("fileAction.copy") {
+                        Task {
+                            await fileTree.copy(node)
+                        }
+                    }
+                    Button("fileAction.showInfo") {
+                        Task {
+                            await fileTree.inspect(node)
+                        }
                     }
                     Button("fileAction.revealInFinder") {
                         NSWorkspace.shared.activateFileViewerSelecting([node.url])
@@ -250,22 +340,33 @@ private struct FileTreeNodeRow: View {
         }
     }
 
-    private func chooseMoveDestination() {
-        let panel = NSOpenPanel()
-        panel.title = String(localized: "fileAction.chooseDestination")
-        panel.message = String(localized: "fileAction.chooseDestinationMessage")
-        panel.directoryURL = fileTree.workspace.rootURL
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-
-        guard panel.runModal() == .OK, let destinationURL = panel.url else {
-            return
-        }
-
-        Task {
-            await fileTree.move(node, to: destinationURL)
-        }
+    private var isDropTarget: Bool {
+        fileTree.dropTargetNodeID == node.id
     }
+
+    private var isSelected: Bool {
+        fileTree.selectedNodeID == node.id
+    }
+
+    private var isHovered: Bool {
+        fileTree.hoveredNodeID == node.id
+    }
+
+    private var labelBackgroundColor: Color {
+        if isDropTarget {
+            return .black.opacity(0.9)
+        }
+        if isSelected {
+            return .black.opacity(0.78)
+        }
+        if isHovered {
+            return .black.opacity(0.62)
+        }
+        return .clear
+    }
+
+    private var labelForegroundStyle: Color {
+        isDropTarget || isSelected || isHovered ? .white : .primary
+    }
+
 }

@@ -14,6 +14,7 @@ enum WorkspaceError: Error, Equatable, Sendable {
     case rootOperationForbidden
     case writeFailed
     case moveFailed
+    case invalidMoveDestination
     case trashFailed
 }
 
@@ -44,6 +45,8 @@ extension WorkspaceError: LocalizedError {
             String(localized: "error.file.writeFailed")
         case .moveFailed:
             String(localized: "error.file.moveFailed")
+        case .invalidMoveDestination:
+            String(localized: "error.file.invalidMoveDestination")
         case .trashFailed:
             String(localized: "error.file.trashFailed")
         }

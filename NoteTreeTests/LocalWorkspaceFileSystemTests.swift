@@ -60,6 +60,36 @@ final class LocalWorkspaceFileSystemTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "existing")
     }
 
+    func testMoveRejectsMovingAFolderIntoItsDescendant() async throws {
+        let workspace = try TemporaryWorkspace()
+        let sourceFolder = try workspace.makeDirectory("Source/Child")
+        let fileSystem = LocalWorkspaceFileSystem(workspace: workspace.workspace())
+
+        await assertWorkspaceError(.invalidMoveDestination) {
+            _ = try await fileSystem.moveItem(
+                at: sourceFolder.deletingLastPathComponent(),
+                to: sourceFolder
+            )
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceFolder.path))
+    }
+
+    func testItemInfoReportsVisibleDirectChildrenWithoutReadingFileContents() async throws {
+        let workspace = try TemporaryWorkspace()
+        let folder = try workspace.makeDirectory("Reference")
+        _ = try workspace.writeFile("Reference/visible.md", contents: "do not read this")
+        _ = try workspace.writeFile("Reference/.hidden.md")
+        let fileSystem = LocalWorkspaceFileSystem(workspace: workspace.workspace())
+
+        let info = try await fileSystem.itemInfo(at: folder)
+
+        XCTAssertEqual(info.displayName, "Reference")
+        XCTAssertEqual(info.relativePath, "Reference")
+        XCTAssertEqual(info.kind, .folder)
+        XCTAssertEqual(info.directChildCount, 1)
+    }
+
     func testMoveAndTrashRejectRootAndSymbolicLinkEscape() async throws {
         let workspace = try TemporaryWorkspace()
         let outsideWorkspace = try TemporaryWorkspace()

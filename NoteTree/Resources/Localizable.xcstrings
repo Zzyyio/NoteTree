@@ -61,6 +61,12 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请输入有效的文件或文件夹名称。" } }
       }
     },
+    "error.file.invalidMoveDestination" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "An item cannot be moved into itself or one of its subfolders." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "项目不能移动到自身或其子文件夹中。" } }
+      }
+    },
     "error.file.moveFailed" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree could not move this item." } },
@@ -91,22 +97,10 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "NoteTree 无法创建此项目。" } }
       }
     },
-    "fileAction.chooseDestination" : {
+    "fileAction.copy" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose Destination Folder" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择目标文件夹" } }
-      }
-    },
-    "fileAction.chooseDestinationMessage" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a folder inside this workspace." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请选择当前工作区内的文件夹。" } }
-      }
-    },
-    "fileAction.move" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Move…" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "移动…" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "复制" } }
       }
     },
     "fileAction.moveToTrash" : {
@@ -149,6 +143,96 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Show in Finder" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在 Finder 中显示" } }
+      }
+    },
+    "fileAction.showInfo" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get Info" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看信息" } }
+      }
+    },
+    "fileInfo.children" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Items" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "项目数" } }
+      }
+    },
+    "fileInfo.children.count %lld" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld items" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%lld 个项目" } }
+      }
+    },
+    "fileInfo.done" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完成" } }
+      }
+    },
+    "fileInfo.loading" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading file information…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在载入文件信息…" } }
+      }
+    },
+    "fileInfo.location" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Location" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "位置" } }
+      }
+    },
+    "fileInfo.modified" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Modified" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "修改时间" } }
+      }
+    },
+    "fileInfo.size" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Size" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "大小" } }
+      }
+    },
+    "fileInfo.type" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Kind" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "类型" } }
+      }
+    },
+    "fileInfo.type.file" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "File" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文件" } }
+      }
+    },
+    "fileInfo.type.folder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Folder" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文件夹" } }
+      }
+    },
+    "fileInfo.type.image" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Image" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图片" } }
+      }
+    },
+    "fileInfo.type.markdown" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Markdown" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Markdown" } }
+      }
+    },
+    "fileInfo.type.pdf" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "PDF" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "PDF" } }
+      }
+    },
+    "fileInfo.unavailable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unavailable" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不可用" } }
       }
     },
     "error.workspace.invalid" : {
@@ -239,6 +323,12 @@
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent Workspaces" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近的工作区" } }
+      }
+    },
+    "sidebar.workspaceRoot" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Workspace Root" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作区根目录" } }
       }
     },
     "welcome.description" : {

@@ -4,7 +4,7 @@ NoteTree 是一个原生 macOS、本地优先的文件型笔记应用。工作�
 
 ## 当前状态
 
-项目已完成 Phase 2 的安全文件操作闭环，可用 Xcode 打开。当前包含：
+项目已完成 Phase 2.5 的文件管理交互闭环，可用 Xcode 打开。当前包含：
 
 - `NoteTree` macOS App target。
 - `NoteTreeTests` 单元测试 target。
@@ -15,7 +15,8 @@ NoteTree 是一个原生 macOS、本地优先的文件型笔记应用。工作�
 - 受工作区 root 边界保护的文件系统 actor：惰性树、过滤、类型路由、隐藏/包/.git/构建目录排除，以及符号链接逃逸防护。
 - `NSFilePresenter` 外部变更观察；刷新后保留可用的展开状态与选中项。
 - 新建空白 Markdown/文件夹、行内重命名、工作区内移动与移到系统废纸篓；所有操作均在文件系统 actor 内重新校验工作区边界、根目录保护、名称冲突与符号链接。
-- 侧边栏的“新建”菜单、项目右键菜单、目标文件夹选择器与“在 Finder 中显示”；新建、重命名和移动接入系统 Undo。
+- 侧边栏的“新建”菜单、项目右键菜单与“在 Finder 中显示”；移动仅通过文件树内直接拖放完成，新建、重命名和移动接入系统 Undo。
+- 仅限工作区内的文件树拖放移动、复制文件 URL 到 macOS 剪贴板，以及异步读取的文件信息面板（类型、相对路径、大小、修改时间和文件夹直接子项数）。
 - 英文和简体中文 String Catalog。
 - App Sandbox 与 User Selected File Read/Write entitlement；无网络 entitlement。
 

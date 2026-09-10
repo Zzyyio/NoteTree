@@ -9,6 +9,7 @@ protocol WorkspaceFileSystem: Sendable {
     func renameItem(at url: URL, to name: String) async throws -> FileNode
     func moveItem(at url: URL, to destinationDirectory: URL) async throws -> FileNode
     func trashItem(at url: URL) async throws
+    func itemInfo(at url: URL) async throws -> FileItemInfo
 }
 
 protocol WorkspaceItemTrashing: Sendable {
@@ -25,6 +26,7 @@ struct SystemWorkspaceTrash: WorkspaceItemTrashing {
 actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
     private let rootURL: URL
     private let workspaceID: WorkspaceID
+    private let workspaceDisplayName: String
     private let typeDetector: any FileTypeDetecting
     private let exclusionPolicy: FileTreeExclusionPolicy
     private let logger: Logger
@@ -41,6 +43,7 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
     ) {
         rootURL = workspace.rootURL.standardizedFileURL.resolvingSymlinksInPath()
         workspaceID = workspace.id
+        workspaceDisplayName = workspace.displayName
         self.typeDetector = typeDetector
         self.exclusionPolicy = exclusionPolicy
         self.logger = logger
@@ -178,6 +181,31 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
         }
     }
 
+    func itemInfo(at url: URL) async throws -> FileItemInfo {
+        let itemURL = try validatedExistingURL(url)
+
+        do {
+            let values = try itemURL.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .fileSizeKey,
+                .contentModificationDateKey
+            ])
+            let isDirectory = values.isDirectory == true
+            let directChildCount = isDirectory ? try visibleDirectChildCount(in: itemURL) : nil
+
+            return FileItemInfo(
+                displayName: itemURL == rootURL ? workspaceDisplayName : itemURL.lastPathComponent,
+                relativePath: relativePath(for: itemURL),
+                kind: isDirectory ? .folder : typeDetector.kind(for: itemURL),
+                byteCount: values.fileSize,
+                modificationDate: values.contentModificationDate,
+                directChildCount: directChildCount
+            )
+        } catch {
+            throw mapOperationError(error, defaultError: .readFailed)
+        }
+    }
+
     private func node(for url: URL) throws -> FileNode {
         let validatedURL = try validatedURL(url)
         let values = try validatedURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
@@ -256,6 +284,7 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
     }
 
     private func moveExistingItem(at sourceURL: URL, named name: String, to destinationDirectory: URL) throws -> FileNode {
+        try ensureDestinationIsNotSourceOrDescendant(sourceURL, destinationDirectory: destinationDirectory)
         let targetName = try validatedFileName(name)
         let targetURL = destinationDirectory.appendingPathComponent(targetName, isDirectory: false)
         guard !fileManager.fileExists(atPath: targetURL.path) else {
@@ -285,6 +314,27 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
     private func ensureNotRoot(_ url: URL) throws {
         guard url != rootURL else {
             throw WorkspaceError.rootOperationForbidden
+        }
+    }
+
+    private func ensureDestinationIsNotSourceOrDescendant(_ sourceURL: URL, destinationDirectory: URL) throws {
+        let sourceIsDirectory = (try? sourceURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        guard !sourceIsDirectory
+            || (destinationDirectory != sourceURL && !destinationDirectory.path.hasPrefix(sourceURL.path + "/")) else {
+            throw WorkspaceError.invalidMoveDestination
+        }
+    }
+
+    private func visibleDirectChildCount(in directory: URL) throws -> Int {
+        let urls = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isHiddenKey, .isPackageKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        )
+        return urls.reduce(into: 0) { count, url in
+            if !exclusionPolicy.shouldExclude(url), !isSymbolicLink(url) {
+                count += 1
+            }
         }
     }
 

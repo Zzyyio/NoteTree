@@ -20,6 +20,7 @@ enum FileTreeCreationKind: Sendable {
 final class FileTreeStore {
     let workspace: Workspace
     private let fileSystem: any WorkspaceFileSystem
+    private let clipboard: any FileURLCopying
 
     private(set) var rootChildren: [FileNode] = []
     private(set) var matchingNodes: [FileNode] = []
@@ -34,13 +35,26 @@ final class FileTreeStore {
     private(set) var renameNodeID: FileNodeID?
     var renameName = ""
     private(set) var inlineOperationError: WorkspaceError?
+    private(set) var inspectedItem: FileItemInfo?
+    private(set) var inspectionError: WorkspaceError?
+    private(set) var isShowingInspection = false
+    private(set) var draggedNodeID: FileNodeID?
+    private(set) var dropTargetNodeID: FileNodeID?
+    private(set) var isRootDropTarget = false
+    private(set) var hoveredNodeID: FileNodeID?
+    private var activeDragToken: UUID?
 
     private var filterTask: Task<Void, Never>?
     private var undoManager: UndoManager?
 
-    init(workspace: Workspace, fileSystem: any WorkspaceFileSystem) {
+    init(
+        workspace: Workspace,
+        fileSystem: any WorkspaceFileSystem,
+        clipboard: any FileURLCopying = SystemFileURLClipboard()
+    ) {
         self.workspace = workspace
         self.fileSystem = fileSystem
+        self.clipboard = clipboard
     }
 
     func loadRoot() async throws {
@@ -83,6 +97,14 @@ final class FileTreeStore {
 
     func select(_ node: FileNode) {
         selectedNodeID = node.id
+    }
+
+    func setHovered(_ node: FileNode, isHovering: Bool) {
+        if isHovering {
+            hoveredNodeID = node.id
+        } else if hoveredNodeID == node.id {
+            hoveredNodeID = nil
+        }
     }
 
     func setUndoManager(_ undoManager: UndoManager?) {
@@ -165,7 +187,7 @@ final class FileTreeStore {
             let renamed = try await fileSystem.renameItem(at: node.url, to: renameName)
             cancelRename()
             registerUndo(.rename(currentURL: renamed.url, previousName: node.displayName))
-            await refresh(selecting: renamed.id)
+            applySuccessfulMove(of: node, to: renamed)
         } catch let error as WorkspaceError {
             inlineOperationError = error
         } catch {
@@ -173,27 +195,115 @@ final class FileTreeStore {
         }
     }
 
-    func move(_ node: FileNode, to destinationDirectory: URL) async {
+    @discardableResult
+    func move(_ node: FileNode, to destinationDirectory: URL) async -> Bool {
+        guard canMove(node, to: destinationDirectory) else {
+            lastError = .invalidMoveDestination
+            return false
+        }
+
         do {
             let moved = try await fileSystem.moveItem(at: node.url, to: destinationDirectory)
             registerUndo(.move(currentURL: moved.url, previousDirectory: node.url.deletingLastPathComponent()))
-            await refresh(selecting: moved.id)
+            applySuccessfulMove(of: node, to: moved)
+            lastError = nil
+            return true
         } catch let error as WorkspaceError {
             lastError = error
         } catch {
             lastError = .moveFailed
         }
+        return false
     }
 
     func trash(_ node: FileNode) async {
         do {
             try await fileSystem.trashItem(at: node.url)
-            await refresh()
+            removeFromVisibleTree(node)
         } catch let error as WorkspaceError {
             lastError = error
         } catch {
             lastError = .trashFailed
         }
+    }
+
+    func copy(_ node: FileNode) async {
+        do {
+            _ = try await fileSystem.itemInfo(at: node.url)
+            clipboard.copyFileURL(node.url)
+            lastError = nil
+        } catch let error as WorkspaceError {
+            lastError = error
+        } catch {
+            lastError = .readFailed
+        }
+    }
+
+    func inspect(_ node: FileNode? = nil) async {
+        isShowingInspection = true
+        inspectedItem = nil
+        inspectionError = nil
+
+        do {
+            inspectedItem = try await fileSystem.itemInfo(at: node?.url ?? workspace.rootURL)
+        } catch let error as WorkspaceError {
+            inspectionError = error
+        } catch {
+            inspectionError = .readFailed
+        }
+    }
+
+    func dismissInspection() {
+        isShowingInspection = false
+        inspectedItem = nil
+        inspectionError = nil
+    }
+
+    func beginDragging(_ node: FileNode) -> UUID {
+        let token = UUID()
+        draggedNodeID = node.id
+        activeDragToken = token
+        dropTargetNodeID = nil
+        isRootDropTarget = false
+        return token
+    }
+
+    func canAcceptDrop(on destination: FileNode?) -> Bool {
+        guard let source = draggedNode(), let destination else {
+            return destination == nil && draggedNode() != nil && sourceCanMoveToRoot()
+        }
+
+        guard destination.isFolder else {
+            return false
+        }
+        return canMove(source, to: destination.url)
+    }
+
+    func updateDropTarget(_ destination: FileNode?) {
+        guard canAcceptDrop(on: destination) else {
+            clearDropTarget()
+            return
+        }
+        dropTargetNodeID = destination?.id
+        isRootDropTarget = destination == nil
+    }
+
+    func clearDropTarget() {
+        dropTargetNodeID = nil
+        isRootDropTarget = false
+    }
+
+    @discardableResult
+    func completeDrop(with token: UUID, on destination: FileNode?) async -> Bool {
+        defer {
+            draggedNodeID = nil
+            activeDragToken = nil
+            clearDropTarget()
+        }
+        guard token == activeDragToken, let source = draggedNode(), canAcceptDrop(on: destination) else {
+            return false
+        }
+        return await move(source, to: destination?.url ?? workspace.rootURL)
     }
 
     func selectedNode() -> FileNode? {
@@ -235,22 +345,25 @@ final class FileTreeStore {
     }
 
     func refresh() async {
-        let expandedPaths = expandedNodeIDs.map(\.relativePath)
+        let expandedPaths = Set(expandedNodeIDs.map(\.relativePath))
         let selectedPath = selectedNodeID?.relativePath
 
         do {
-            try await loadRoot()
-            expandedNodeIDs = []
-            for path in expandedPaths.sorted(by: { $0.count < $1.count }) {
+            // Construct the expanded hierarchy before publishing it. Replacing the tree one
+            // time prevents List from briefly collapsing every open branch after a file action.
+            let refreshedRootChildren = try await refreshedChildren(
+                in: workspace.rootURL,
+                expandedPaths: expandedPaths
+            )
+            rootChildren = refreshedRootChildren
+            expandedNodeIDs = Set(expandedPaths.compactMap { path in
                 let nodeID = FileNodeID(workspaceID: workspace.id, relativePath: path)
-                if let node = node(with: nodeID), node.isFolder {
-                    await setExpanded(nodeID, isExpanded: true)
-                }
-            }
+                return node(with: nodeID)?.isFolder == true ? nodeID : nil
+            })
             restoreSelection(relativePath: selectedPath)
             updateFilter()
         } catch {
-            // loadRoot records a user-presentable error while preserving the last visible tree.
+            // Keep the last visible tree if a concurrent external change makes reloading fail.
         }
     }
 
@@ -277,6 +390,32 @@ final class FileTreeStore {
         Self.findNode(with: id, in: rootChildren)
     }
 
+    private func draggedNode() -> FileNode? {
+        guard let draggedNodeID else {
+            return nil
+        }
+        return node(with: draggedNodeID) ?? matchingNodes.first(where: { $0.id == draggedNodeID })
+    }
+
+    private func sourceCanMoveToRoot() -> Bool {
+        guard let source = draggedNode() else {
+            return false
+        }
+        return canMove(source, to: workspace.rootURL)
+    }
+
+    private func canMove(_ source: FileNode, to destinationDirectory: URL) -> Bool {
+        let sourceParentURL = source.url.deletingLastPathComponent()
+        guard sourceParentURL != destinationDirectory else {
+            return false
+        }
+        guard !source.isFolder
+            || (destinationDirectory != source.url && !destinationDirectory.path.hasPrefix(source.url.path + "/")) else {
+            return false
+        }
+        return true
+    }
+
     private static func findNode(with id: FileNodeID, in nodes: [FileNode]) -> FileNode? {
         for node in nodes {
             if node.id == id {
@@ -293,6 +432,116 @@ final class FileTreeStore {
         Self.replaceChildren(of: id, with: children, in: &rootChildren)
     }
 
+    private func applySuccessfulMove(of source: FileNode, to moved: FileNode) {
+        _ = removeNode(with: source.id)
+        insertVisibleNode(moved, into: moved.url.deletingLastPathComponent())
+        rebaseVisibleState(from: source, to: moved)
+        selectedNodeID = moved.id
+        refreshActiveFilter()
+    }
+
+    private func removeFromVisibleTree(_ node: FileNode) {
+        _ = removeNode(with: node.id)
+        removeVisibleState(for: node)
+        refreshActiveFilter()
+    }
+
+    @discardableResult
+    private func removeNode(with id: FileNodeID) -> FileNode? {
+        Self.removeNode(with: id, from: &rootChildren)
+    }
+
+    private func insertVisibleNode(_ node: FileNode, into directoryURL: URL) {
+        if directoryURL == workspace.rootURL {
+            rootChildren = Self.sortedNodes(rootChildren + [node])
+            return
+        }
+
+        Self.insertNode(node, into: directoryURL, in: &rootChildren)
+    }
+
+    private func rebaseVisibleState(from source: FileNode, to moved: FileNode) {
+        // A moved folder is collapsed until the user opens it again, so stale descendant
+        // URLs can never be selected while its new location is being observed.
+        expandedNodeIDs = Set(expandedNodeIDs.filter { id in
+            !isDescendantOrSame(id.relativePath, of: source.relativePath)
+        })
+        selectedNodeID = selectedNodeID.map { rebasedID($0, from: source, to: moved) }
+        hoveredNodeID = hoveredNodeID.map { rebasedID($0, from: source, to: moved) }
+        matchingNodes = matchingNodes.map { rebasedNode($0, from: source, to: moved) }
+    }
+
+    private func removeVisibleState(for removedNode: FileNode) {
+        expandedNodeIDs = Set(expandedNodeIDs.filter { id in
+            !isDescendantOrSame(id.relativePath, of: removedNode.relativePath)
+        })
+        if let selectedNodeID,
+           isDescendantOrSame(selectedNodeID.relativePath, of: removedNode.relativePath) {
+            restoreSelection(relativePath: removedNode.relativePath)
+        }
+        if let hoveredNodeID,
+           isDescendantOrSame(hoveredNodeID.relativePath, of: removedNode.relativePath) {
+            self.hoveredNodeID = nil
+        }
+        matchingNodes.removeAll { node in
+            isDescendantOrSame(node.relativePath, of: removedNode.relativePath)
+        }
+    }
+
+    private func refreshActiveFilter() {
+        guard !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        updateFilter()
+    }
+
+    private func rebasedID(_ id: FileNodeID, from source: FileNode, to moved: FileNode) -> FileNodeID {
+        guard isDescendantOrSame(id.relativePath, of: source.relativePath) else {
+            return id
+        }
+
+        let suffix = String(id.relativePath.dropFirst(source.relativePath.count))
+        return FileNodeID(workspaceID: workspace.id, relativePath: moved.relativePath + suffix)
+    }
+
+    private func rebasedNode(_ node: FileNode, from source: FileNode, to moved: FileNode) -> FileNode {
+        let id = rebasedID(node.id, from: source, to: moved)
+        guard id != node.id else {
+            return node
+        }
+
+        return FileNode(
+            id: id,
+            url: workspace.rootURL.appendingPathComponent(id.relativePath, isDirectory: node.isFolder),
+            displayName: node.displayName,
+            relativePath: id.relativePath,
+            kind: node.kind,
+            metadata: node.metadata,
+            children: node.children?.map { rebasedNode($0, from: source, to: moved) }
+        )
+    }
+
+    private func isDescendantOrSame(_ path: String, of ancestorPath: String) -> Bool {
+        path == ancestorPath || path.hasPrefix(ancestorPath + "/")
+    }
+
+    private func refreshedChildren(
+        in directoryURL: URL,
+        expandedPaths: Set<String>
+    ) async throws -> [FileNode] {
+        var children = try await fileSystem.children(of: directoryURL)
+
+        for index in children.indices where children[index].isFolder
+            && expandedPaths.contains(children[index].relativePath) {
+            children[index].children = try await refreshedChildren(
+                in: children[index].url,
+                expandedPaths: expandedPaths
+            )
+        }
+
+        return children
+    }
+
     @discardableResult
     private static func replaceChildren(of id: FileNodeID, with children: [FileNode], in nodes: inout [FileNode]) -> Bool {
         for index in nodes.indices {
@@ -307,6 +556,46 @@ final class FileTreeStore {
             }
         }
         return false
+    }
+
+    private static func removeNode(with id: FileNodeID, from nodes: inout [FileNode]) -> FileNode? {
+        for index in nodes.indices {
+            if nodes[index].id == id {
+                return nodes.remove(at: index)
+            }
+            if var children = nodes[index].children,
+               let removed = removeNode(with: id, from: &children) {
+                nodes[index].children = children
+                return removed
+            }
+        }
+        return nil
+    }
+
+    private static func insertNode(_ node: FileNode, into directoryURL: URL, in nodes: inout [FileNode]) {
+        for index in nodes.indices {
+            if nodes[index].url == directoryURL {
+                guard var children = nodes[index].children else {
+                    return
+                }
+                children.append(node)
+                nodes[index].children = sortedNodes(children)
+                return
+            }
+            if var children = nodes[index].children {
+                insertNode(node, into: directoryURL, in: &children)
+                nodes[index].children = children
+            }
+        }
+    }
+
+    private static func sortedNodes(_ nodes: [FileNode]) -> [FileNode] {
+        nodes.sorted { left, right in
+            if left.isFolder != right.isFolder {
+                return left.isFolder
+            }
+            return left.displayName.localizedStandardCompare(right.displayName) == .orderedAscending
+        }
     }
 
     private func refresh(selecting nodeID: FileNodeID) async {
