@@ -22,9 +22,12 @@ final class WorkspaceStore {
     private var accessedWorkspaceURL: URL?
     private var didAttemptRestoration = false
     private var changeMonitor: WorkspaceChangeMonitor?
+    private var workspaceFileSystem: (any WorkspaceFileSystem)?
+    private let markdownDraftStore: any MarkdownDraftStoring
 
     private(set) var currentWorkspace: Workspace?
     private(set) var fileTree: FileTreeStore?
+    private(set) var markdownSession: MarkdownDocumentSession?
     private(set) var recents: [RecentWorkspace] = []
     private(set) var state: WorkspaceState = .welcome
 
@@ -35,12 +38,14 @@ final class WorkspaceStore {
         fileSystemFactory: @escaping @Sendable (Workspace) -> any WorkspaceFileSystem = { workspace in
             LocalWorkspaceFileSystem(workspace: workspace)
         },
+        markdownDraftStore: any MarkdownDraftStoring = MarkdownDraftStore(),
         logger: Logger = AppLog.workspace
     ) {
         self.bookmarkStore = bookmarkStore
         self.picker = picker
         self.resourceAccess = resourceAccess
         self.fileSystemFactory = fileSystemFactory
+        self.markdownDraftStore = markdownDraftStore
         self.logger = logger
     }
 
@@ -99,6 +104,37 @@ final class WorkspaceStore {
         await fileTree?.refresh()
     }
 
+    func openMarkdown(_ node: FileNode) async {
+        guard node.kind == .markdown,
+              let workspace = currentWorkspace,
+              let workspaceFileSystem else {
+            return
+        }
+        guard markdownSession?.url != node.url else {
+            return
+        }
+        guard await markdownSession?.prepareForFileSwitch() ?? true else {
+            return
+        }
+
+        let session = MarkdownDocumentSession(
+            workspace: workspace,
+            url: node.url,
+            fileSystem: workspaceFileSystem,
+            draftStore: markdownDraftStore
+        )
+        markdownSession = session
+        await session.load()
+    }
+
+    func saveCurrentMarkdown() async {
+        _ = await markdownSession?.saveNow()
+    }
+
+    func flushCurrentMarkdown() async -> Bool {
+        await markdownSession?.prepareForFileSwitch() ?? true
+    }
+
     func openRecent(_ recentWorkspace: RecentWorkspace) async {
         state = .loading
         switch await bookmarkStore.resolve(recentWorkspace) {
@@ -107,11 +143,15 @@ final class WorkspaceStore {
         case .needsReauthorization(let unavailableWorkspace):
             releaseCurrentWorkspaceAccess()
             fileTree = nil
+            markdownSession = nil
+            self.workspaceFileSystem = nil
             currentWorkspace = nil
             state = .needsReauthorization(unavailableWorkspace)
         case .none:
             releaseCurrentWorkspaceAccess()
             fileTree = nil
+            markdownSession = nil
+            self.workspaceFileSystem = nil
             currentWorkspace = nil
             state = .welcome
         }
@@ -127,9 +167,12 @@ final class WorkspaceStore {
         }
         accessedWorkspaceURL = workspace.rootURL
 
-        let fileTree = FileTreeStore(workspace: workspace, fileSystem: fileSystemFactory(workspace))
+        let workspaceFileSystem = fileSystemFactory(workspace)
+        let fileTree = FileTreeStore(workspace: workspace, fileSystem: workspaceFileSystem)
         currentWorkspace = workspace
+        self.workspaceFileSystem = workspaceFileSystem
         self.fileTree = fileTree
+        markdownSession = nil
 
         do {
             try await fileTree.loadRoot()
@@ -140,11 +183,15 @@ final class WorkspaceStore {
         } catch let error as WorkspaceError {
             releaseCurrentWorkspaceAccess()
             self.fileTree = nil
+            self.workspaceFileSystem = nil
+            markdownSession = nil
             currentWorkspace = nil
             state = .failure(error)
         } catch {
             releaseCurrentWorkspaceAccess()
             self.fileTree = nil
+            self.workspaceFileSystem = nil
+            markdownSession = nil
             currentWorkspace = nil
             state = .failure(.readFailed)
         }
@@ -153,6 +200,8 @@ final class WorkspaceStore {
     private func releaseCurrentWorkspaceAccess() {
         changeMonitor?.stop()
         changeMonitor = nil
+        workspaceFileSystem = nil
+        markdownSession = nil
         guard let accessedWorkspaceURL else {
             return
         }
@@ -165,7 +214,8 @@ final class WorkspaceStore {
             return
         }
         Task {
-            await fileTree.refresh()
+            await fileTree.refreshAfterExternalChange()
+            await markdownSession?.checkForExternalChange()
         }
     }
 }

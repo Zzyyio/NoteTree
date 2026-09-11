@@ -40,7 +40,7 @@ struct WorkspaceDetailView: View {
             }
         case .ready:
             if let node = workspaceStore.fileTree?.selectedNode() {
-                FileRouteView(node: node)
+                FileRouteView(node: node, workspaceStore: workspaceStore)
             } else {
                 ContentUnavailableView {
                     Label("workspace.selectFile.title", systemImage: "sidebar.left")
@@ -55,6 +55,7 @@ struct WorkspaceDetailView: View {
 @MainActor
 private struct FileRouteView: View {
     let node: FileNode
+    let workspaceStore: WorkspaceStore
 
     var body: some View {
         switch EditorRouter.route(for: node.kind) {
@@ -68,7 +69,7 @@ private struct FileRouteView: View {
                 }
             }
         case .markdown:
-            placeholder(title: "detail.markdown.title", image: node.kind.systemImage)
+            MarkdownEditorHost(node: node, workspaceStore: workspaceStore)
         case .pdf:
             placeholder(title: "detail.pdf.title", image: node.kind.systemImage)
         case .image:

@@ -10,6 +10,9 @@ protocol WorkspaceFileSystem: Sendable {
     func moveItem(at url: URL, to destinationDirectory: URL) async throws -> FileNode
     func trashItem(at url: URL) async throws
     func itemInfo(at url: URL) async throws -> FileItemInfo
+    func readData(at url: URL) async throws -> VersionedFileData
+    func writeData(_ data: Data, to url: URL, expectedVersion: FileVersion) async throws -> FileVersion
+    func writeCopy(of data: Data, for url: URL, named name: String) async throws -> URL
 }
 
 protocol WorkspaceItemTrashing: Sendable {
@@ -206,6 +209,79 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
         }
     }
 
+    func readData(at url: URL) async throws -> VersionedFileData {
+        let itemURL = try validatedExistingURL(url)
+        do {
+            var result: Result<VersionedFileData, Error>?
+            var coordinationError: NSError?
+            NSFileCoordinator().coordinate(readingItemAt: itemURL, options: [], error: &coordinationError) { coordinatedURL in
+                do {
+                    result = .success(
+                        VersionedFileData(
+                            data: try Data(contentsOf: coordinatedURL),
+                            version: try self.fileVersion(for: coordinatedURL)
+                        )
+                    )
+                } catch {
+                    result = .failure(error)
+                }
+            }
+            if let coordinationError {
+                throw coordinationError
+            }
+            guard let result else {
+                throw WorkspaceError.readFailed
+            }
+            return try result.get()
+        } catch {
+            throw mapOperationError(error, defaultError: .readFailed)
+        }
+    }
+
+    func writeData(_ data: Data, to url: URL, expectedVersion: FileVersion) async throws -> FileVersion {
+        let itemURL = try validatedExistingURL(url)
+        try ensureNotRoot(itemURL)
+
+        do {
+            var savedVersion: FileVersion?
+            try coordinateWriting(itemURL, options: .forReplacing) { coordinatedURL in
+                guard try self.fileVersion(for: coordinatedURL) == expectedVersion else {
+                    throw WorkspaceError.externalConflict
+                }
+
+                let temporaryURL = coordinatedURL.deletingLastPathComponent()
+                    .appendingPathComponent(".notetree-\(UUID().uuidString).tmp")
+                defer { try? self.fileManager.removeItem(at: temporaryURL) }
+
+                try data.write(to: temporaryURL, options: .withoutOverwriting)
+                _ = try self.fileManager.replaceItemAt(
+                    coordinatedURL,
+                    withItemAt: temporaryURL,
+                    backupItemName: nil,
+                    options: .usingNewMetadataOnly
+                )
+                savedVersion = try self.fileVersion(for: coordinatedURL)
+            }
+            guard let savedVersion else {
+                throw WorkspaceError.writeFailed
+            }
+            return savedVersion
+        } catch {
+            throw mapOperationError(error, defaultError: .writeFailed)
+        }
+    }
+
+    func writeCopy(of data: Data, for url: URL, named name: String) async throws -> URL {
+        let itemURL = try validatedExistingURL(url)
+        let destinationURL = try targetURL(named: name, in: itemURL.deletingLastPathComponent())
+        do {
+            try data.write(to: destinationURL, options: .withoutOverwriting)
+            return destinationURL
+        } catch {
+            throw mapOperationError(error, defaultError: .writeFailed)
+        }
+    }
+
     private func node(for url: URL) throws -> FileNode {
         let validatedURL = try validatedURL(url)
         let values = try validatedURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
@@ -221,6 +297,19 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
                 modificationDate: values.contentModificationDate
             ),
             children: nil
+        )
+    }
+
+    private func fileVersion(for url: URL) throws -> FileVersion {
+        let values = try url.resourceValues(forKeys: [
+            .contentModificationDateKey,
+            .fileSizeKey,
+            .fileResourceIdentifierKey
+        ])
+        return FileVersion(
+            modificationDate: values.contentModificationDate,
+            byteCount: values.fileSize,
+            resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
         )
     }
 

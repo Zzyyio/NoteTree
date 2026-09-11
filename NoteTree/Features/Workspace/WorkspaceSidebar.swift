@@ -33,8 +33,8 @@ struct WorkspaceSidebar: View {
                         if let creationKind = fileTree.creationKind {
                             InlineCreationRow(kind: creationKind, fileTree: fileTree)
                         }
-                        FileTreeNodeList(nodes: fileTree.rootChildren, fileTree: fileTree)
                         WorkspaceRootDropTarget(fileTree: fileTree)
+                        FileTreeNodeList(nodes: fileTree.rootChildren, fileTree: fileTree)
                     } else if fileTree.matchingNodes.isEmpty {
                         Text("sidebar.noMatches")
                             .foregroundStyle(.secondary)
@@ -58,18 +58,6 @@ struct WorkspaceSidebar: View {
             } else {
                 ContentUnavailableView {
                     Label("sidebar.noWorkspace", systemImage: "folder")
-                }
-            }
-
-            if !workspaceStore.recents.isEmpty {
-                Section("sidebar.recents") {
-                    ForEach(workspaceStore.recents) { recentWorkspace in
-                        Button(recentWorkspace.workspace.displayName) {
-                            Task {
-                                await workspaceStore.openRecent(recentWorkspace)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -112,16 +100,16 @@ struct WorkspaceSidebar: View {
             workspaceStore.fileTree?.setUndoManager(newValue)
         }
         .safeAreaInset(edge: .bottom) {
-            if let workspace = workspaceStore.currentWorkspace {
-                HStack(spacing: 6) {
-                    Image(systemName: "folder")
-                    Text(workspace.displayName)
-                        .lineLimit(1)
+                if let workspace = workspaceStore.currentWorkspace {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
+                        Text(workspace.displayName)
+                            .lineLimit(1)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(8)
-            }
         }
     }
 
@@ -289,6 +277,7 @@ private struct FileTreeNodeRow: View {
                     Label(node.displayName, systemImage: node.kind.systemImage)
                         .lineLimit(1)
                         .foregroundStyle(labelForegroundStyle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(RoundedRectangle(cornerRadius: 5).fill(labelBackgroundColor))

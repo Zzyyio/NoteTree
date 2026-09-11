@@ -18,6 +18,27 @@ enum FileTreeCreationKind: Sendable {
 @MainActor
 @Observable
 final class FileTreeStore {
+    private struct VisibleTreeSnapshot {
+        let rootChildren: [FileNode]
+        let matchingNodes: [FileNode]
+        let expandedNodeIDs: Set<FileNodeID>
+        let selectedNodeID: FileNodeID?
+        let hoveredNodeID: FileNodeID?
+        let foldersPendingChildReload: Set<FileNodeID>
+    }
+
+    private struct PendingOptimisticMove {
+        let token: UUID
+        let source: FileNode
+        let destinationDirectory: URL
+        let snapshot: VisibleTreeSnapshot
+    }
+
+    private enum InternalMutationRefreshSuppression {
+        case inFlight
+        case until(Date)
+    }
+
     let workspace: Workspace
     private let fileSystem: any WorkspaceFileSystem
     private let clipboard: any FileURLCopying
@@ -43,9 +64,12 @@ final class FileTreeStore {
     private(set) var isRootDropTarget = false
     private(set) var hoveredNodeID: FileNodeID?
     private var activeDragToken: UUID?
+    private var pendingOptimisticMove: PendingOptimisticMove?
+    private var foldersPendingChildReload: Set<FileNodeID> = []
 
     private var filterTask: Task<Void, Never>?
     private var undoManager: UndoManager?
+    private var internalMutationRefreshSuppression: InternalMutationRefreshSuppression?
 
     init(
         workspace: Workspace,
@@ -80,13 +104,15 @@ final class FileTreeStore {
         }
 
         expandedNodeIDs.insert(nodeID)
-        guard let node = node(with: nodeID), node.isFolder, node.children == nil else {
+        guard let node = node(with: nodeID), node.isFolder,
+              node.children == nil || foldersPendingChildReload.contains(nodeID) else {
             return
         }
 
         do {
             let children = try await fileSystem.children(of: node.url)
             replaceChildren(of: nodeID, with: children)
+            foldersPendingChildReload.remove(nodeID)
             lastError = nil
         } catch let error as WorkspaceError {
             lastError = error
@@ -197,23 +223,15 @@ final class FileTreeStore {
 
     @discardableResult
     func move(_ node: FileNode, to destinationDirectory: URL) async -> Bool {
-        guard canMove(node, to: destinationDirectory) else {
-            lastError = .invalidMoveDestination
+        guard pendingOptimisticMove == nil,
+              let pendingMove = prepareOptimisticMove(
+                  token: UUID(),
+                  source: node,
+                  destinationDirectory: destinationDirectory
+              ) else {
             return false
         }
-
-        do {
-            let moved = try await fileSystem.moveItem(at: node.url, to: destinationDirectory)
-            registerUndo(.move(currentURL: moved.url, previousDirectory: node.url.deletingLastPathComponent()))
-            applySuccessfulMove(of: node, to: moved)
-            lastError = nil
-            return true
-        } catch let error as WorkspaceError {
-            lastError = error
-        } catch {
-            lastError = .moveFailed
-        }
-        return false
+        return await performMove(pendingMove)
     }
 
     func trash(_ node: FileNode) async {
@@ -293,17 +311,42 @@ final class FileTreeStore {
         isRootDropTarget = false
     }
 
-    @discardableResult
-    func completeDrop(with token: UUID, on destination: FileNode?) async -> Bool {
-        defer {
-            draggedNodeID = nil
-            activeDragToken = nil
-            clearDropTarget()
+    func beginDrop(on destination: FileNode?) -> UUID? {
+        guard pendingOptimisticMove == nil,
+              let token = activeDragToken,
+              let source = draggedNode(),
+              canAcceptDrop(on: destination),
+              let pendingMove = prepareOptimisticMove(
+                  token: token,
+                  source: source,
+                  destinationDirectory: destination?.url ?? workspace.rootURL
+              ) else {
+            return nil
         }
-        guard token == activeDragToken, let source = draggedNode(), canAcceptDrop(on: destination) else {
+
+        pendingOptimisticMove = pendingMove
+        draggedNodeID = nil
+        activeDragToken = nil
+        clearDropTarget()
+        return token
+    }
+
+    @discardableResult
+    func finishDrop(with token: UUID) async -> Bool {
+        guard let pendingMove = pendingOptimisticMove, pendingMove.token == token else {
             return false
         }
-        return await move(source, to: destination?.url ?? workspace.rootURL)
+        pendingOptimisticMove = nil
+        return await performMove(pendingMove)
+    }
+
+    @discardableResult
+    func completeDrop(with token: UUID, on destination: FileNode?) async -> Bool {
+        guard token == activeDragToken,
+              let startedToken = beginDrop(on: destination) else {
+            return false
+        }
+        return await finishDrop(with: startedToken)
     }
 
     func selectedNode() -> FileNode? {
@@ -356,6 +399,7 @@ final class FileTreeStore {
                 expandedPaths: expandedPaths
             )
             rootChildren = refreshedRootChildren
+            foldersPendingChildReload = []
             expandedNodeIDs = Set(expandedPaths.compactMap { path in
                 let nodeID = FileNodeID(workspaceID: workspace.id, relativePath: path)
                 return node(with: nodeID)?.isFolder == true ? nodeID : nil
@@ -365,6 +409,21 @@ final class FileTreeStore {
         } catch {
             // Keep the last visible tree if a concurrent external change makes reloading fail.
         }
+    }
+
+    func refreshAfterExternalChange() async {
+        switch internalMutationRefreshSuppression {
+        case .inFlight:
+            return
+        case .until(let deadline) where Date() <= deadline:
+            // A coordinated move may emit several presenter callbacks. Every callback inside
+            // this bounded window describes the already-visible local mutation.
+            return
+        case .until, .none:
+            internalMutationRefreshSuppression = nil
+        }
+
+        await refresh()
     }
 
     private func restoreSelection(relativePath: String?) {
@@ -433,6 +492,60 @@ final class FileTreeStore {
     }
 
     private func applySuccessfulMove(of source: FileNode, to moved: FileNode) {
+        applyVisibleMove(of: source, to: moved)
+        markInternalMutation()
+    }
+
+    private func prepareOptimisticMove(
+        token: UUID,
+        source: FileNode,
+        destinationDirectory: URL
+    ) -> PendingOptimisticMove? {
+        guard canMove(source, to: destinationDirectory),
+              let optimisticNode = optimisticMoveNode(for: source, to: destinationDirectory) else {
+            lastError = .invalidMoveDestination
+            return nil
+        }
+
+        let snapshot = visibleTreeSnapshot()
+        internalMutationRefreshSuppression = .inFlight
+        applyVisibleMove(of: source, to: optimisticNode)
+        return PendingOptimisticMove(
+            token: token,
+            source: source,
+            destinationDirectory: destinationDirectory,
+            snapshot: snapshot
+        )
+    }
+
+    private func performMove(_ pendingMove: PendingOptimisticMove) async -> Bool {
+        do {
+            let moved = try await fileSystem.moveItem(
+                at: pendingMove.source.url,
+                to: pendingMove.destinationDirectory
+            )
+            registerUndo(
+                .move(
+                    currentURL: moved.url,
+                    previousDirectory: pendingMove.source.url.deletingLastPathComponent()
+                )
+            )
+            markInternalMutation()
+            lastError = nil
+            return true
+        } catch let error as WorkspaceError {
+            restoreVisibleTree(pendingMove.snapshot)
+            internalMutationRefreshSuppression = nil
+            lastError = error
+        } catch {
+            restoreVisibleTree(pendingMove.snapshot)
+            internalMutationRefreshSuppression = nil
+            lastError = .moveFailed
+        }
+        return false
+    }
+
+    private func applyVisibleMove(of source: FileNode, to moved: FileNode) {
         _ = removeNode(with: source.id)
         insertVisibleNode(moved, into: moved.url.deletingLastPathComponent())
         rebaseVisibleState(from: source, to: moved)
@@ -443,7 +556,71 @@ final class FileTreeStore {
     private func removeFromVisibleTree(_ node: FileNode) {
         _ = removeNode(with: node.id)
         removeVisibleState(for: node)
+        markInternalMutation()
         refreshActiveFilter()
+    }
+
+    private func markInternalMutation() {
+        internalMutationRefreshSuppression = .until(Date().addingTimeInterval(1))
+    }
+
+    private func visibleTreeSnapshot() -> VisibleTreeSnapshot {
+        VisibleTreeSnapshot(
+            rootChildren: rootChildren,
+            matchingNodes: matchingNodes,
+            expandedNodeIDs: expandedNodeIDs,
+            selectedNodeID: selectedNodeID,
+            hoveredNodeID: hoveredNodeID,
+            foldersPendingChildReload: foldersPendingChildReload
+        )
+    }
+
+    private func restoreVisibleTree(_ snapshot: VisibleTreeSnapshot) {
+        rootChildren = snapshot.rootChildren
+        matchingNodes = snapshot.matchingNodes
+        expandedNodeIDs = snapshot.expandedNodeIDs
+        selectedNodeID = snapshot.selectedNodeID
+        hoveredNodeID = snapshot.hoveredNodeID
+        foldersPendingChildReload = snapshot.foldersPendingChildReload
+    }
+
+    private func optimisticMoveNode(for source: FileNode, to destinationDirectory: URL) -> FileNode? {
+        let destinationURL = destinationDirectory.standardizedFileURL
+        let targetURL = destinationURL
+            .appendingPathComponent(source.displayName, isDirectory: source.isFolder)
+            .standardizedFileURL
+        let rootPath = workspace.rootURL.standardizedFileURL.path
+        guard targetURL.path.hasPrefix(rootPath + "/") else {
+            return nil
+        }
+
+        let relativePath = String(targetURL.path.dropFirst(rootPath.count))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !relativePath.isEmpty else {
+            return nil
+        }
+
+        let optimisticBase = FileNode(
+            id: FileNodeID(workspaceID: workspace.id, relativePath: relativePath),
+            url: targetURL,
+            displayName: source.displayName,
+            relativePath: relativePath,
+            kind: source.kind,
+            metadata: source.metadata,
+            children: nil
+        )
+
+        return FileNode(
+            id: optimisticBase.id,
+            url: optimisticBase.url,
+            displayName: optimisticBase.displayName,
+            relativePath: optimisticBase.relativePath,
+            kind: optimisticBase.kind,
+            metadata: optimisticBase.metadata,
+            children: source.children?.map { child in
+                rebasedNode(child, from: source, to: optimisticBase)
+            }
+        )
     }
 
     @discardableResult
@@ -457,14 +634,14 @@ final class FileTreeStore {
             return
         }
 
-        Self.insertNode(node, into: directoryURL, in: &rootChildren)
+        if let destinationID = Self.insertNode(node, into: directoryURL, in: &rootChildren) {
+            foldersPendingChildReload.insert(destinationID)
+        }
     }
 
     private func rebaseVisibleState(from source: FileNode, to moved: FileNode) {
-        // A moved folder is collapsed until the user opens it again, so stale descendant
-        // URLs can never be selected while its new location is being observed.
-        expandedNodeIDs = Set(expandedNodeIDs.filter { id in
-            !isDescendantOrSame(id.relativePath, of: source.relativePath)
+        expandedNodeIDs = Set(expandedNodeIDs.map { id in
+            rebasedID(id, from: source, to: moved)
         })
         selectedNodeID = selectedNodeID.map { rebasedID($0, from: source, to: moved) }
         hoveredNodeID = hoveredNodeID.map { rebasedID($0, from: source, to: moved) }
@@ -572,21 +749,28 @@ final class FileTreeStore {
         return nil
     }
 
-    private static func insertNode(_ node: FileNode, into directoryURL: URL, in nodes: inout [FileNode]) {
+    private static func insertNode(
+        _ node: FileNode,
+        into directoryURL: URL,
+        in nodes: inout [FileNode]
+    ) -> FileNodeID? {
         for index in nodes.indices {
             if nodes[index].url == directoryURL {
-                guard var children = nodes[index].children else {
-                    return
-                }
+                let requiresReload = nodes[index].children == nil
+                var children = nodes[index].children ?? []
                 children.append(node)
                 nodes[index].children = sortedNodes(children)
-                return
+                return requiresReload ? nodes[index].id : nil
             }
             if var children = nodes[index].children {
-                insertNode(node, into: directoryURL, in: &children)
+                let destinationID = insertNode(node, into: directoryURL, in: &children)
                 nodes[index].children = children
+                if let destinationID {
+                    return destinationID
+                }
             }
         }
+        return nil
     }
 
     private static func sortedNodes(_ nodes: [FileNode]) -> [FileNode] {

@@ -15,6 +15,10 @@ struct NoteTreeApp: App {
                 Task {
                     await dependencies.workspaceStore.chooseWorkspace()
                 }
+            } saveMarkdown: {
+                Task {
+                    await dependencies.workspaceStore.saveCurrentMarkdown()
+                }
             }
         }
 

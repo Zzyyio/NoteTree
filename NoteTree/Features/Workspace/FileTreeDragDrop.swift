@@ -43,22 +43,15 @@ struct FileTreeDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        guard fileTree.canAcceptDrop(on: destination) else {
+        // The active drag token is already held by FileTreeStore. Starting the optimistic
+        // move here, before returning from the drop callback, removes the visible gap that
+        // waiting for NSItemProvider's asynchronous data loader creates.
+        guard let token = fileTree.beginDrop(on: destination) else {
             return false
         }
 
-        guard let provider = info.itemProviders(for: [FileTreeDragDrop.contentType]).first else {
-            return false
-        }
-        provider.loadDataRepresentation(forTypeIdentifier: FileTreeDragDrop.contentType.identifier) { data, _ in
-            guard let data,
-                  let tokenString = String(data: data, encoding: .utf8),
-                  let token = UUID(uuidString: tokenString) else {
-                return
-            }
-            Task { @MainActor in
-                await fileTree.completeDrop(with: token, on: destination)
-            }
+        Task { @MainActor in
+            await fileTree.finishDrop(with: token)
         }
         return true
     }
