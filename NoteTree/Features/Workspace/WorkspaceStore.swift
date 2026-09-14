@@ -28,6 +28,7 @@ final class WorkspaceStore {
     private(set) var currentWorkspace: Workspace?
     private(set) var fileTree: FileTreeStore?
     private(set) var markdownSession: MarkdownDocumentSession?
+    private(set) var pdfController: PDFEditorController?
     private(set) var recents: [RecentWorkspace] = []
     private(set) var state: WorkspaceState = .welcome
 
@@ -127,8 +128,44 @@ final class WorkspaceStore {
         await session.load()
     }
 
+    func openPDF(_ node: FileNode) async {
+        guard node.kind == .pdf,
+              let workspace = currentWorkspace,
+              let workspaceFileSystem else {
+            return
+        }
+        guard pdfController?.url != node.url else {
+            return
+        }
+        guard await markdownSession?.prepareForFileSwitch() ?? true else {
+            return
+        }
+
+        if let currentPDF = pdfController, currentPDF.isDirty {
+            guard await currentPDF.save() else {
+                return
+            }
+        }
+        pdfController?.close()
+        let controller = PDFEditorController(
+            workspace: workspace,
+            url: node.url,
+            fileSystem: workspaceFileSystem
+        )
+        pdfController = controller
+        await controller.load()
+    }
+
     func saveCurrentMarkdown() async {
         _ = await markdownSession?.saveNow()
+    }
+
+    func saveCurrentDocument() async {
+        if let pdfController, pdfController.isDirty {
+            _ = await pdfController.save()
+        } else {
+            await saveCurrentMarkdown()
+        }
     }
 
     func flushCurrentMarkdown() async -> Bool {
@@ -144,6 +181,7 @@ final class WorkspaceStore {
             releaseCurrentWorkspaceAccess()
             fileTree = nil
             markdownSession = nil
+            pdfController = nil
             self.workspaceFileSystem = nil
             currentWorkspace = nil
             state = .needsReauthorization(unavailableWorkspace)
@@ -151,6 +189,7 @@ final class WorkspaceStore {
             releaseCurrentWorkspaceAccess()
             fileTree = nil
             markdownSession = nil
+            pdfController = nil
             self.workspaceFileSystem = nil
             currentWorkspace = nil
             state = .welcome
@@ -173,6 +212,7 @@ final class WorkspaceStore {
         self.workspaceFileSystem = workspaceFileSystem
         self.fileTree = fileTree
         markdownSession = nil
+        pdfController = nil
 
         do {
             try await fileTree.loadRoot()
@@ -185,6 +225,7 @@ final class WorkspaceStore {
             self.fileTree = nil
             self.workspaceFileSystem = nil
             markdownSession = nil
+            pdfController = nil
             currentWorkspace = nil
             state = .failure(error)
         } catch {
@@ -192,6 +233,7 @@ final class WorkspaceStore {
             self.fileTree = nil
             self.workspaceFileSystem = nil
             markdownSession = nil
+            pdfController = nil
             currentWorkspace = nil
             state = .failure(.readFailed)
         }
@@ -200,6 +242,8 @@ final class WorkspaceStore {
     private func releaseCurrentWorkspaceAccess() {
         changeMonitor?.stop()
         changeMonitor = nil
+        pdfController?.close()
+        pdfController = nil
         workspaceFileSystem = nil
         markdownSession = nil
         guard let accessedWorkspaceURL else {

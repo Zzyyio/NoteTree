@@ -71,7 +71,7 @@ private struct FileRouteView: View {
         case .markdown:
             MarkdownEditorHost(node: node, workspaceStore: workspaceStore)
         case .pdf:
-            placeholder(title: "detail.pdf.title", image: node.kind.systemImage)
+            PDFReaderHost(node: node, workspaceStore: workspaceStore)
         case .image:
             placeholder(title: "detail.image.title", image: node.kind.systemImage)
         case .unsupported:
@@ -84,6 +84,26 @@ private struct FileRouteView: View {
             Label(title, systemImage: image)
         } description: {
             Text("detail.readOnly.description")
+        }
+    }
+}
+
+@MainActor
+private struct PDFReaderHost: View {
+    let node: FileNode
+    let workspaceStore: WorkspaceStore
+
+    var body: some View {
+        Group {
+            if let controller = workspaceStore.pdfController, controller.url == node.url {
+                PDFReaderView(controller: controller)
+            } else {
+                ProgressView("pdf.loading")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: node.id) {
+            await workspaceStore.openPDF(node)
         }
     }
 }

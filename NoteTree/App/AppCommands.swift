@@ -3,7 +3,7 @@ import SwiftUI
 @MainActor
 struct AppCommands: Commands {
     let openWorkspace: () -> Void
-    let saveMarkdown: () -> Void
+    let saveCurrentDocument: () -> Void
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -12,7 +12,7 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
-            Button("markdown.save", action: saveMarkdown)
+            Button("command.save", action: saveCurrentDocument)
                 .keyboardShortcut("s", modifiers: .command)
         }
     }

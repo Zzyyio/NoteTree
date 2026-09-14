@@ -15,9 +15,9 @@ struct NoteTreeApp: App {
                 Task {
                     await dependencies.workspaceStore.chooseWorkspace()
                 }
-            } saveMarkdown: {
+            } saveCurrentDocument: {
                 Task {
-                    await dependencies.workspaceStore.saveCurrentMarkdown()
+                    await dependencies.workspaceStore.saveCurrentDocument()
                 }
             }
         }

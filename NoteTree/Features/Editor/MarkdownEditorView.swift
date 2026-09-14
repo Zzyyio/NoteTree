@@ -195,7 +195,7 @@ private struct MarkdownPreview: View {
         ScrollView {
             Group {
                 if let rendered = try? AttributedString(
-                    markdown: text,
+                    markdown: MarkdownPreviewFormatter.renderingSource(for: text),
                     options: .init(interpretedSyntax: .full)
                 ) {
                     Text(rendered)

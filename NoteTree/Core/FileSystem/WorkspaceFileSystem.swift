@@ -216,10 +216,14 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
             var coordinationError: NSError?
             NSFileCoordinator().coordinate(readingItemAt: itemURL, options: [], error: &coordinationError) { coordinatedURL in
                 do {
+                    // A file presenter may redirect a coordinated read. Validate the
+                    // final location too, so that a symlink or alias swap cannot turn
+                    // an already-authorized read into an out-of-workspace access.
+                    let safeCoordinatedURL = try self.validatedExistingURL(coordinatedURL)
                     result = .success(
                         VersionedFileData(
-                            data: try Data(contentsOf: coordinatedURL),
-                            version: try self.fileVersion(for: coordinatedURL)
+                            data: try Data(contentsOf: safeCoordinatedURL),
+                            version: try self.fileVersion(for: safeCoordinatedURL)
                         )
                     )
                 } catch {
