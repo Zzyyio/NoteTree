@@ -5,6 +5,7 @@ import SwiftUI
 struct WorkspaceSidebar: View {
     let workspaceStore: WorkspaceStore
     @Environment(\.undoManager) private var undoManager
+    @FocusState private var filterFocused: Bool
 
     var body: some View {
         List {
@@ -21,6 +22,7 @@ struct WorkspaceSidebar: View {
                 @Bindable var fileTree = fileTree
                 Section {
                     TextField("sidebar.filter", text: $fileTree.filterText)
+                        .focused($filterFocused)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: fileTree.filterText) { _, _ in
                             fileTree.updateFilter()
@@ -62,6 +64,7 @@ struct WorkspaceSidebar: View {
             }
         }
         .navigationTitle(workspaceStore.currentWorkspace?.displayName ?? "sidebar.noWorkspace")
+        .onChange(of: workspaceStore.filterFocusRequest) { _, _ in filterFocused = true }
         .sheet(isPresented: inspectionBinding) {
             if let fileTree = workspaceStore.fileTree {
                 FileInfoSheet(fileTree: fileTree)
@@ -284,6 +287,25 @@ private struct FileTreeNodeRow: View {
                 }
                 .contentShape(Rectangle())
                 .buttonStyle(.plain)
+                .onKeyPress(.return) {
+                    fileTree.beginRename(node)
+                    return .handled
+                }
+                .onKeyPress(keys: [.delete], phases: .down) { key in
+                    guard key.modifiers.contains(.command) else { return .ignored }
+                    Task { await fileTree.trash(node) }
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    guard node.isFolder else { return .ignored }
+                    Task { await fileTree.setExpanded(node.id, isExpanded: true) }
+                    return .handled
+                }
+                .onKeyPress(.leftArrow) {
+                    guard node.isFolder else { return .ignored }
+                    Task { await fileTree.setExpanded(node.id, isExpanded: false) }
+                    return .handled
+                }
                 .onHover { isHovering in
                     fileTree.setHovered(node, isHovering: isHovering)
                 }

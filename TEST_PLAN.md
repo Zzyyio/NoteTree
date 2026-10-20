@@ -1,5 +1,15 @@
 # NoteTree 测试计划
 
+## 2026-10-20 非 PDF 功能定向验证
+
+本轮遵照用户要求不进行饱和测试。新增 `ImageRendererTests`、`ImageEditorSessionTests` 与 `NonPDFCompletionTests`，覆盖 EXIF 方向 1–8、裁剪旋转与透明通道、降采样、多帧禁止覆盖、保存/副本重开、权限失败、外部版本冲突、目标同名冲突、未保存文件变更保护、隐藏/排除规则、嵌套选择恢复及 Markdown 图片路径限制。
+
+复用受影响的文件系统、Markdown session、文件树和工作区测试；另做一次欢迎页启动检查。40 MP、真实 HEIC/广色域、iCloud、多窗口恢复和 VoiceOver 的人工端到端检查仍待进行。本文后续的完整发布矩阵是发布要求，不代表本轮均已执行。
+
+实际结果：首轮 27 项定向测试通过；补充预览/恢复后 17 项定向测试通过；末轮 5 项收尾测试通过。UI 启动测试未能初始化，系统返回 LocalAuthentication -4（System authentication is running），没有执行应用断言，未反复重试。
+
+Debug 构建及最终 Release 构建均成功，无 Swift 编译警告；Xcode 输出了未依赖 AppIntents.framework 因而跳过元数据提取的工具提示。工作区差异检查通过，本轮 PDF 源码无修改。
+
 ## 1. 测试原则
 
 - 数据安全相关逻辑必须先有测试再扩展功能。

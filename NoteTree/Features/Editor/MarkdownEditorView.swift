@@ -39,6 +39,9 @@ private struct MarkdownEditorView: View {
     @State private var isShowingFind = false
     @State private var findText = ""
     @State private var isShowingDifference = false
+    @State private var editor: NSTextView?
+    @AppStorage("editor.fontSize") private var fontSize = 14.0
+    @AppStorage("editor.wrap") private var wraps = true
 
     var body: some View {
         @Bindable var session = session
@@ -64,12 +67,22 @@ private struct MarkdownEditorView: View {
                 case .split:
                     HSplitView {
                         sourceEditor(text: $session.text)
-                        MarkdownPreview(text: session.text)
+                        MarkdownDocumentPreview(session: session)
                     }
                 case .preview:
-                    MarkdownPreview(text: session.text)
+                    MarkdownDocumentPreview(session: session)
                 }
             }
+            HStack {
+                Text(session.url.lastPathComponent)
+                Spacer()
+                if session.state == .saving {
+                    ProgressView().controlSize(.small)
+                    Text("markdown.saving")
+                } else {
+                    Text(session.isDirty ? "image.unsaved" : "image.saved")
+                }
+            }.font(.caption).foregroundStyle(.secondary).padding(8)
         }
         .navigationTitle(session.url.lastPathComponent)
         .toolbar {
@@ -83,17 +96,19 @@ private struct MarkdownEditorView: View {
                 .frame(width: 190)
 
                 Button("markdown.find", systemImage: "magnifyingglass") {
-                    isShowingFind.toggle()
-                }
+                    let item = NSMenuItem()
+                    item.tag = NSTextFinder.Action.showFindInterface.rawValue
+                    editor?.performFindPanelAction(item)
+                }.keyboardShortcut("f", modifiers: .command)
                 Button("markdown.bold", systemImage: "bold") {
-                    insert("****")
-                }
+                    wrapSelection(prefix: "**", suffix: "**")
+                }.keyboardShortcut("b", modifiers: .command)
                 Button("markdown.italic", systemImage: "italic") {
-                    insert("**")
-                }
+                    wrapSelection(prefix: "*", suffix: "*")
+                }.keyboardShortcut("i", modifiers: .command)
                 Button("markdown.link", systemImage: "link") {
-                    insert("[](https://)")
-                }
+                    wrapSelection(prefix: "[", suffix: "](https://)")
+                }.keyboardShortcut("k", modifiers: .command)
                 
             }
         }
@@ -103,14 +118,7 @@ private struct MarkdownEditorView: View {
     }
 
     private func sourceEditor(text: Binding<String>) -> some View {
-        TextEditor(text: text)
-            .font(.body.monospaced())
-            .padding(16)
-            .disabled(session.isReadOnly || session.state == .conflict)
-            .onChange(of: text.wrappedValue) { _, newValue in
-                session.updateText(newValue)
-            }
-            .accessibilityIdentifier("markdown.editor")
+        MarkdownSourceEditor(session: session, fontSize: fontSize, wraps: wraps, editor: $editor)
     }
 
     private var findBar: some View {
@@ -182,34 +190,15 @@ private struct MarkdownEditorView: View {
         return session.text.lowercased().components(separatedBy: needle.lowercased()).count - 1
     }
 
-    private func insert(_ snippet: String) {
-        session.updateText(session.text + snippet)
-    }
-}
-
-@MainActor
-private struct MarkdownPreview: View {
-    let text: String
-
-    var body: some View {
-        ScrollView {
-            Group {
-                if let rendered = try? AttributedString(
-                    markdown: MarkdownPreviewFormatter.renderingSource(for: text),
-                    options: .init(interpretedSyntax: .full)
-                ) {
-                    Text(rendered)
-                } else {
-                    Text(text)
-                        .font(.body.monospaced())
-                }
-            }
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .textSelection(.enabled)
-            .padding(24)
-        }
-        .accessibilityIdentifier("markdown.preview")
+    private func wrapSelection(prefix: String, suffix: String) {
+        guard let editor, editor.isEditable else { return }
+        let range = editor.selectedRange()
+        let selected = (editor.string as NSString).substring(with: range)
+        guard editor.shouldChangeText(in: range, replacementString: prefix + selected + suffix) else { return }
+        editor.textStorage?.replaceCharacters(in: range, with: prefix + selected + suffix)
+        editor.didChangeText()
+        editor.setSelectedRange(NSRange(location: range.location + (prefix as NSString).length, length: range.length))
+        editor.window?.makeFirstResponder(editor)
     }
 }
 

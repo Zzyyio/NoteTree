@@ -181,8 +181,19 @@ final class MarkdownDocumentSession {
         return MarkdownTextDifference(localText: text, externalText: externalText)
     }
 
+    func localImagePreview(_ path: String) async -> Data? {
+        guard let components = URLComponents(string: path), components.scheme == nil,
+              components.host == nil, !path.hasPrefix("/") else { return nil }
+        let target = url.deletingLastPathComponent().appendingPathComponent(path.removingPercentEncoding ?? path)
+        do {
+            let contents = try await fileSystem.readData(at: target)
+            return try await ImageRenderer().render(contents.data, recipe: .init(), preview: true).data
+        } catch { return nil }
+    }
+
     private func scheduleAutoSave() {
         saveTask?.cancel()
+        guard UserDefaults.standard.object(forKey: "editor.autoSave") as? Bool ?? true else { return }
         let saveDelay = saveDelay
         saveTask = Task { [weak self, saveDelay] in
             do {

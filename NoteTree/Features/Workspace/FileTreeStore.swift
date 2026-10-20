@@ -121,8 +121,58 @@ final class FileTreeStore {
         }
     }
 
+    var beforeSelection: (() async -> Bool)?
+    var canMutate: ((FileNode) -> Bool)?
+    private var selectionTask: Task<Void, Never>?
+    private(set) var backHistory: [FileNodeID] = []
+    private(set) var forwardHistory: [FileNodeID] = []
+
     func select(_ node: FileNode) {
-        selectedNodeID = node.id
+        guard selectedNodeID != node.id else { return }
+        guard let beforeSelection else {
+            selectedNodeID = node.id
+            return
+        }
+        guard selectionTask == nil else { return }
+        selectionTask = Task {
+            defer { selectionTask = nil }
+            guard await beforeSelection() else { return }
+            if let selectedNodeID { backHistory.append(selectedNodeID) }
+            forwardHistory = []
+            selectedNodeID = node.id
+        }
+    }
+
+    func navigateHistory(back: Bool) {
+        guard selectionTask == nil else { return }
+        selectionTask = Task {
+            defer { selectionTask = nil }
+            guard await beforeSelection?() ?? true else { return }
+            var history = back ? backHistory : forwardHistory
+            while let id = history.popLast() {
+                guard node(with: id) != nil else { continue }
+                if let current = selectedNodeID {
+                    if back { forwardHistory.append(current) } else { backHistory.append(current) }
+                }
+                selectedNodeID = id
+                break
+            }
+            if back { backHistory = history } else { forwardHistory = history }
+        }
+    }
+
+    func restorePath(_ path: String) async {
+        let parts = path.split(separator: "/")
+        guard !parts.isEmpty, !parts.contains("..") else { return }
+        var prefix: [String] = []
+        for part in parts.dropLast() {
+            prefix.append(String(part))
+            let id = FileNodeID(workspaceID: workspace.id, relativePath: prefix.joined(separator: "/"))
+            guard node(with: id)?.isFolder == true else { return }
+            if !expandedNodeIDs.contains(id) { await setExpanded(id, isExpanded: true) }
+        }
+        let id = FileNodeID(workspaceID: workspace.id, relativePath: path)
+        if node(with: id) != nil { selectedNodeID = id }
     }
 
     func setHovered(_ node: FileNode, isHovering: Bool) {
@@ -157,6 +207,7 @@ final class FileTreeStore {
     }
 
     func commitCreation() async {
+        guard await beforeSelection?() ?? true else { return }
         guard let creationKind else {
             return
         }
@@ -205,6 +256,7 @@ final class FileTreeStore {
     }
 
     func commitRename(for node: FileNode) async {
+        guard canMutate?(node) ?? true else { inlineOperationError = .unsavedChanges; return }
         guard renameNodeID == node.id else {
             return
         }
@@ -235,6 +287,7 @@ final class FileTreeStore {
     }
 
     func trash(_ node: FileNode) async {
+        guard canMutate?(node) ?? true else { lastError = .unsavedChanges; return }
         do {
             try await fileSystem.trashItem(at: node.url)
             removeFromVisibleTree(node)
@@ -501,6 +554,7 @@ final class FileTreeStore {
         source: FileNode,
         destinationDirectory: URL
     ) -> PendingOptimisticMove? {
+        guard canMutate?(source) ?? true else { lastError = .unsavedChanges; return nil }
         guard canMove(source, to: destinationDirectory),
               let optimisticNode = optimisticMoveNode(for: source, to: destinationDirectory) else {
             lastError = .invalidMoveDestination
@@ -802,6 +856,7 @@ final class FileTreeStore {
     }
 
     private func performUndo(_ action: FileTreeUndoAction) async {
+        guard await beforeSelection?() ?? true else { return }
         do {
             switch action {
             case .trashCreated(let url):

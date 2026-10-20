@@ -73,9 +73,18 @@ private struct FileRouteView: View {
         case .pdf:
             PDFReaderHost(node: node, workspaceStore: workspaceStore)
         case .image:
-            placeholder(title: "detail.image.title", image: node.kind.systemImage)
+            ImageEditorHost(node: node, workspaceStore: workspaceStore)
         case .unsupported:
-            placeholder(title: "detail.unsupported.title", image: node.kind.systemImage)
+            VStack(spacing: 12) {
+                Label(node.displayName, systemImage: node.kind.systemImage).font(.title2)
+                Text(node.relativePath).textSelection(.enabled)
+                if let size = node.metadata.byteCount {
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                }
+                if let date = node.metadata.modificationDate { Text(date, format: .dateTime) }
+                Button("detail.openDefault") { NSWorkspace.shared.open(node.url) }
+                Button("fileAction.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+            }.padding()
         }
     }
 

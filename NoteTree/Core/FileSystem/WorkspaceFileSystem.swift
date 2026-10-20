@@ -61,7 +61,7 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
             let urls = try fileManager.contentsOfDirectory(
                 at: validatedDirectory,
                 includingPropertiesForKeys: [.isDirectoryKey, .isHiddenKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey],
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                options: exclusionPolicy.showHidden ? [.skipsPackageDescendants] : [.skipsHiddenFiles, .skipsPackageDescendants]
             )
 
             let nodes = urls.compactMap { url -> FileNode? in
@@ -92,7 +92,7 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
         guard let enumerator = fileManager.enumerator(
             at: rootURL,
             includingPropertiesForKeys: [.isDirectoryKey, .isHiddenKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: exclusionPolicy.showHidden ? [.skipsPackageDescendants] : [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
             throw WorkspaceError.readFailed
         }
@@ -249,6 +249,7 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
         do {
             var savedVersion: FileVersion?
             try coordinateWriting(itemURL, options: .forReplacing) { coordinatedURL in
+                _ = try self.validatedExistingURL(coordinatedURL)
                 guard try self.fileVersion(for: coordinatedURL) == expectedVersion else {
                     throw WorkspaceError.externalConflict
                 }
@@ -279,7 +280,15 @@ actor LocalWorkspaceFileSystem: WorkspaceFileSystem {
         let itemURL = try validatedExistingURL(url)
         let destinationURL = try targetURL(named: name, in: itemURL.deletingLastPathComponent())
         do {
-            try data.write(to: destinationURL, options: .withoutOverwriting)
+            try coordinateWriting(destinationURL, options: []) { coordinatedURL in
+                let safeURL = try self.validatedURL(coordinatedURL)
+                guard !self.fileManager.fileExists(atPath: safeURL.path) else { throw WorkspaceError.nameConflict }
+                let temporaryURL = safeURL.deletingLastPathComponent()
+                    .appendingPathComponent(".notetree-\(UUID().uuidString).tmp")
+                defer { try? self.fileManager.removeItem(at: temporaryURL) }
+                try data.write(to: temporaryURL, options: .withoutOverwriting)
+                try self.fileManager.moveItem(at: temporaryURL, to: safeURL)
+            }
             return destinationURL
         } catch {
             throw mapOperationError(error, defaultError: .writeFailed)

@@ -18,6 +18,7 @@ enum WorkspaceError: Error, Equatable, Sendable {
     case moveFailed
     case invalidMoveDestination
     case trashFailed
+    case unsavedChanges
 }
 
 extension WorkspaceError: LocalizedError {
@@ -55,6 +56,8 @@ extension WorkspaceError: LocalizedError {
             String(localized: "error.file.invalidMoveDestination")
         case .trashFailed:
             String(localized: "error.file.trashFailed")
+        case .unsavedChanges:
+            String(localized: "error.file.unsavedChanges")
         }
     }
 }

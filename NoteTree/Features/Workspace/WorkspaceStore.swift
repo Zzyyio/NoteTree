@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Observation
 import OSLog
 
@@ -29,7 +29,9 @@ final class WorkspaceStore {
     private(set) var fileTree: FileTreeStore?
     private(set) var markdownSession: MarkdownDocumentSession?
     private(set) var pdfController: PDFEditorController?
+    private(set) var imageSession: ImageEditorSession?
     private(set) var recents: [RecentWorkspace] = []
+    var filterFocusRequest = 0
     private(set) var state: WorkspaceState = .welcome
 
     init(
@@ -37,7 +39,11 @@ final class WorkspaceStore {
         picker: any WorkspacePicking = SystemWorkspacePicker(),
         resourceAccess: any SecurityScopedResourceAccessing = SystemSecurityScopedResourceAccess(),
         fileSystemFactory: @escaping @Sendable (Workspace) -> any WorkspaceFileSystem = { workspace in
-            LocalWorkspaceFileSystem(workspace: workspace)
+            LocalWorkspaceFileSystem(workspace: workspace, exclusionPolicy: FileTreeExclusionPolicy(
+                showHidden: UserDefaults.standard.bool(forKey: "files.showHidden"),
+                patterns: (UserDefaults.standard.string(forKey: "files.exclusions") ?? "")
+                    .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            ))
         },
         markdownDraftStore: any MarkdownDraftStoring = MarkdownDraftStore(),
         logger: Logger = AppLog.workspace
@@ -50,12 +56,16 @@ final class WorkspaceStore {
         self.logger = logger
     }
 
-    func restoreMostRecentWorkspace() async {
+    func restoreMostRecentWorkspace(preferredID: String? = nil) async {
         guard !didAttemptRestoration else {
             return
         }
         didAttemptRestoration = true
         recents = await bookmarkStore.recents
+        if let preferredID, let recent = recents.first(where: { $0.id.rawValue.uuidString == preferredID }) {
+            await openRecent(recent)
+            return
+        }
 
         switch await bookmarkStore.restoreMostRecent() {
         case .none:
@@ -68,6 +78,7 @@ final class WorkspaceStore {
     }
 
     func chooseWorkspace() async {
+        guard await prepareForNavigation() else { return }
         guard let url = picker.pickWorkspace() else {
             return
         }
@@ -85,6 +96,7 @@ final class WorkspaceStore {
     }
 
     func reauthorize(_ recentWorkspace: RecentWorkspace) async {
+        guard await prepareForNavigation() else { return }
         guard let selectedURL = picker.pickWorkspace() else {
             return
         }
@@ -161,7 +173,9 @@ final class WorkspaceStore {
     }
 
     func saveCurrentDocument() async {
-        if let pdfController, pdfController.isDirty {
+        if let imageSession, fileTree?.selectedNode()?.url == imageSession.url {
+            _ = await imageSession.save(quality: UserDefaults.standard.object(forKey: "image.jpegQuality") as? Double ?? 0.9)
+        } else if let pdfController, pdfController.isDirty {
             _ = await pdfController.save()
         } else {
             await saveCurrentMarkdown()
@@ -173,6 +187,7 @@ final class WorkspaceStore {
     }
 
     func openRecent(_ recentWorkspace: RecentWorkspace) async {
+        guard await prepareForNavigation() else { return }
         state = .loading
         switch await bookmarkStore.resolve(recentWorkspace) {
         case .workspace(let workspace):
@@ -211,7 +226,19 @@ final class WorkspaceStore {
         currentWorkspace = workspace
         self.workspaceFileSystem = workspaceFileSystem
         self.fileTree = fileTree
+        fileTree.beforeSelection = { [weak self] in
+            await self?.prepareForNavigation() ?? false
+        }
+        fileTree.canMutate = { [weak self] node in
+            guard let self else { return false }
+            let dirtyURLs = [
+                self.imageSession?.isDirty == true || self.imageSession?.isSaving == true ? self.imageSession?.url : nil,
+                self.markdownSession?.isDirty == true ? self.markdownSession?.url : nil
+            ].compactMap { $0 }
+            return !dirtyURLs.contains { $0 == node.url || $0.path.hasPrefix(node.url.path + "/") }
+        }
         markdownSession = nil
+        imageSession = nil
         pdfController = nil
 
         do {
@@ -246,6 +273,7 @@ final class WorkspaceStore {
         pdfController = nil
         workspaceFileSystem = nil
         markdownSession = nil
+        imageSession = nil
         guard let accessedWorkspaceURL else {
             return
         }
@@ -260,6 +288,35 @@ final class WorkspaceStore {
         Task {
             await fileTree.refreshAfterExternalChange()
             await markdownSession?.checkForExternalChange()
+            await imageSession?.checkForExternalChange()
         }
+    }
+
+    func openImage(_ node: FileNode) async {
+        guard let workspaceFileSystem, imageSession?.url != node.url else { return }
+        let session = ImageEditorSession(url: node.url, fileSystem: workspaceFileSystem)
+        imageSession = session
+        await session.load()
+    }
+
+    func prepareForNavigation() async -> Bool {
+        guard await flushCurrentMarkdown() else { return false }
+        guard let imageSession, imageSession.isDirty else { return true }
+        guard !imageSession.isSaving else { return false }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "image.unsaved")
+        alert.informativeText = String(localized: "image.leave.description")
+        alert.addButton(withTitle: String(localized: "image.save"))
+        alert.addButton(withTitle: String(localized: "image.discard"))
+        alert.addButton(withTitle: String(localized: "image.cancel"))
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            return await imageSession.save()
+        }
+        if response == .alertSecondButtonReturn {
+            self.imageSession = nil
+            return true
+        }
+        return false
     }
 }
